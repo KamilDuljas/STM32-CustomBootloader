@@ -12,7 +12,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define BOOTLOADER_BUFFER_SIZE 1024
+#define BOOT_BUFFER_SIZE 1024
 
 typedef enum BootOpcode_t {
 	BOOT_CMD_INVALID = 0x00,
@@ -31,6 +31,18 @@ typedef struct BootCommand_t {
 } BootCommand;
 
 BootCommand get_command(UART_HandleTypeDef* const uart, uint32_t const timeout);
+
 void jump_to_application(uint32_t const);
 
+bool erase_application();
+
+bool receive_and_flash_firmware(UART_HandleTypeDef* const uart, uint32_t const firmwareSize);
+
+bool flash_and_verify(uint8_t const* const bytes, size_t const amount, uint32_t const offset);
+
+bool verify_firmware(uint32_t, uint32_t);
+
+void respond_ok(UART_HandleTypeDef* const uart);
+
+void respond_err(UART_HandleTypeDef* const uart);
 #endif /* INC_BOOT_H_ */

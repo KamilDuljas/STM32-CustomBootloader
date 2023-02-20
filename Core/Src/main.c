@@ -25,6 +25,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdbool.h>
+#include "ioputchar.h"
 #include "boot.h"
 /* USER CODE END Includes */
 
