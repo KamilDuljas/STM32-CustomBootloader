@@ -25,6 +25,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdbool.h>
+#include <string.h>
 #include "ioputchar.h"
 #include "boot.h"
 /* USER CODE END Includes */
@@ -51,9 +52,8 @@ uint32_t const APPLICATION_ADDRESS = 0x08008000UL;
 uint32_t applicationSize = 0;
 
 UART_HandleTypeDef *uart[2] = { &huart1, &huart2 };
-UART_HandleTypeDef *mainUart = NULL;
-
-bool waitForUsart = 1;
+bool g_waitForUsart = true;
+bool g_jumpToApp = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,12 +71,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	if (huart == uart[1]) {
 		mainUart = uart[1];
 	}
-	waitForUsart = 0;
+	g_waitForUsart = false;
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t pin) {
 	if (pin == USER_BUTTON_Pin)
-		waitForUsart = 0;
+		g_jumpToApp = true;
 }
 /* USER CODE END 0 */
 
@@ -120,29 +120,98 @@ int main(void)
 
 	HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
 	printf("Bootloader start...\n");
-	while (waitForUsart) {
-		uint8_t buffer[5] = { 0 };
-		HAL_UART_Receive_IT(&huart1, buffer, 5);
-		HAL_UART_Receive_IT(&huart2, buffer, 5);
+	printf("Press user button to jump application (start: 0x08000000)\n");
+	printf("or send ECHO command (0x1 0x0 0x0 0x0 0x0) to choose and set UART\n");
+	uint8_t pattern[5] = { 1, 0, 0, 0, 0 };
+	uint8_t buffer[5] = { 0 };
+	HAL_UART_Receive_IT(&huart1, buffer, 5);
+	HAL_UART_Receive_IT(&huart2, buffer, 5);
+	while (g_waitForUsart == true || memcmp(pattern, buffer, 5))
+	{
+		if (g_jumpToApp == true)
+			break;
 	}
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-
+	if (mainUart != NULL)
+	{
+		if(mainUart == uart[0])
+		{
+			printf("Set UART1\n");
+			printf("DeInit UART2\n");
+			HAL_UART_DeInit(uart[1]);
+		}
+		else
+		{
+			printf("Set UART2\n");
+			printf("DeInit UART1\n");
+			HAL_UART_DeInit(uart[0]);
+		}
+	}
 	while (1) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-		if (HAL_GPIO_ReadPin(USER_BUTTON_GPIO_Port, USER_BUTTON_Pin)
-				== GPIO_PIN_RESET) {
-			// jump to application
-			while (HAL_GPIO_ReadPin(USER_BUTTON_GPIO_Port, USER_BUTTON_Pin)
-					== GPIO_PIN_RESET) {
-			}
+		if(g_jumpToApp == true)
+		{
 			printf("Jump to application\n");
 			jump_to_application(APPLICATION_ADDRESS);
+		}
+		if (mainUart != NULL) {
+			for (int i = 1; i < 2; i++) {
+				BootCommand cmd = get_command(mainUart, 100);
+				switch (cmd.opcode) {
+				case BOOT_CMD_ECHO: {
+					// Simple echo request, respond with OK to tell that
+					// the BOOT is running.
+					respond_ok(mainUart);
+					break;
+				}
+				case BOOT_CMD_SETSIZE: {
+					// Set the application size and respond with OK
+					applicationSize = cmd.data;
+					respond_ok(mainUart);
+					break;
+				}
+				case BOOT_CMD_UPDATE: {
+					// Update firmware
+					if (receive_and_flash_firmware(mainUart, applicationSize)) {
+						respond_ok(mainUart);
+					} else {
+						respond_err(mainUart);
+					}
+					break;
+				}
+				case BOOT_CMD_CHECK: {
+					// Check if flashed firmware has valid
+					if (verify_firmware(applicationSize, cmd.data)) {
+						respond_ok(mainUart);
+					} else {
+						respond_err(mainUart);
+					}
+					break;
+				}
+				case BOOT_CMD_JUMP: {
+					// Jump directly to the application.
+					respond_ok(mainUart);
+					jump_to_application(APPLICATION_ADDRESS);
+					break;
+				}
+				case BOOT_CMD_INVALID: {
+					// No command received. We have to handle this case, because
+					// otherwise the BOOT would indefinitely spam ERR
+					// while nothing is happening.
+					break;
+				}
+				default: {
+					// Invalid opcode, respond with error.
+					respond_err(mainUart);
+					break;
+				}
+				}
+			}
 		}
 	}
   /* USER CODE END 3 */
