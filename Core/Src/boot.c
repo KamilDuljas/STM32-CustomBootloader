@@ -4,8 +4,8 @@
 #include "crc.h"
 
 extern uint32_t APPLICATION_ADDRESS;
-char const *const BOOT_MSG_OK = "OK!@!";
-char const *const BOOT_MSG_ERR = "ERR@!";
+char const *const BOOT_MSG_OK = "OK!\n";
+char const *const BOOT_MSG_ERR = "ERR\n";
 uint8_t bootladerBuffer[BOOT_BUFFER_SIZE];
 
 BootCommand get_command(UART_HandleTypeDef *const uart,
@@ -98,7 +98,7 @@ bool erase_application() {
 	if (pageError != 0xFFFFFFFFU) {
 		return false;
 	}
-	printf("OK\n");
+	//printf("OK\n");
 	eraseConfig.TypeErase = FLASH_TYPEERASE_PAGES;
 	eraseConfig.Banks = FLASH_BANK_2;
 	eraseConfig.Page = 256;
@@ -109,7 +109,7 @@ bool erase_application() {
 	if (HAL_FLASHEx_Erase(&eraseConfig, &pageError) != HAL_OK) {
 		return false;
 	}
-	printf("OK\n");
+	//printf("OK\n");
 	return pageError == 0xFFFFFFFFU;
 }
 
@@ -137,9 +137,10 @@ bool receive_and_flash_firmware(UART_HandleTypeDef *const uart,
 				bytesLeft > BOOT_BUFFER_SIZE ?
 						BOOT_BUFFER_SIZE : bytesLeft);
 
-		if (HAL_UART_Receive(uart, bootladerBuffer, bytesToReceive, 2000)
+		if (HAL_UART_Receive(uart, bootladerBuffer, bytesToReceive, 5000)
 				!= HAL_OK) {
 			HAL_FLASH_Lock();
+			printf("Error during flashing!!!!\n");
 			respond_err(uart);
 			return false;
 		}
